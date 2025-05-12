@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Cursor Sound Generator</title>
+    <style>
+        :root {
+            --bg-color: #282c34;
+            --text-color: #abb2bf;
+            --primary-color: #61afef;
+            --secondary-color: #c678dd;
+            --panel-bg: #3a3f4b;
+            --border-color: #4f5666;
+            --highlight-bg: #4b5162;
+            --slider-track: #4f5666;
+            --slider-thumb: var(--primary-color);
+            --sound-area-bg: linear-gradient(135deg, #4a505e 0%, #3a3f4b 100%);
+            --visualizer-start-color: hsl(240, 70%, 60%); /* Blue for low freq */
+            --visualizer-end-color-hue: 0; /* Red for high freq */
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+
+        p {
+            margin-bottom: 15px;
+            max-width: 600px;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        #sound-area {
+            width: clamp(300px, 90vw, 600px); /* Responsive width */
+            height: 350px;
+            border: none;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            cursor: crosshair;
+            background: var(--sound-area-bg);
+            position: relative; /* Needed for coordinate calculations & visualizer */
+            overflow: hidden; /* Hide visualizer parts outside */
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2), inset 0 2px 5px rgba(0, 0, 0, 0.1);
+            touch-action: none; /* Prevent default touch actions like scrolling */
+        }
+
+        #visualizer {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 50px; /* Base size */
+            height: 50px; /* Base size */
+            background-color: var(--visualizer-start-color);
+            border-radius: 50%; /* Make it a circle */
+            transform: translate(-50%, -50%) scale(0.1); /* Start small and centered */
+            opacity: 0; /* Start invisible */
+            transition: transform 0.05s linear, background-color 0.05s linear, opacity 0.1s linear;
+            will-change: transform, background-color, opacity; /* Performance hint */
+             box-shadow: 0 0 20px 5px rgba(255, 255, 255, 0.3); /* Add a glow */
+        }
+
+        #controls-container {
+             display: flex;
+             flex-direction: column; /* Stack controls vertically */
+             align-items: center;
+             width: clamp(300px, 90vw, 600px); /* Match sound area width */
+             gap: 15px; /* Space between elements */
+        }
+
+        #status-display {
+            display: flex;
+            justify-content: space-around; /* Space out status items */
+            width: 100%;
+            padding: 10px 15px;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+            font-size: 0.9em;
+             border: 1px solid var(--border-color);
+        }
+
+        #status-message {
+             font-style: italic;
+             color: #9da5b4; /* Slightly lighter grey */
+        }
+
+        .live-value {
+            color: var(--primary-color);
+            font-weight: bold;
+            min-width: 100px; /* Ensure alignment */
+            text-align: right;
+        }
+        .live-value span {
+            display: inline-block;
+            min-width: 40px; /* Space for numbers */
+            text-align: right;
+             font-family: "Courier New", Courier, monospace; /* Monospace for numbers */
+        }
+
+
+        #controls {
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+            width: 100%;
+             box-sizing: border-box;
+        }
+
+        #controls h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+            color: var(--secondary-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        #controls div {
+            margin-bottom: 15px;
+            display: grid; /* Use grid for better alignment */
+            grid-template-columns: auto 1fr auto; /* Label | Slider/Select | Value */
+            gap: 10px;
+            align-items: center;
+        }
+
+        label {
+            justify-self: start; /* Align label text to the left */
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: var(--slider-track);
+            outline: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--slider-thumb);
+            border-radius: 50%;
+            cursor: pointer;
+             border: 2px solid var(--panel-bg); /* Make thumb pop */
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--slider-thumb);
+            border-radius: 50%;
+            cursor: pointer;
+             border: 2px solid var(--panel-bg);
+        }
+
+        select {
+            padding: 5px 8px;
+            border-radius: 4px;
+            background-color: var(--highlight-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            min-width: 100px; /* Give select some space */
+        }
+
+        .value-display {
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.9em;
+            min-width: 60px; /* Ensure space for value + unit */
+            text-align: right;
+            color: var(--primary-color);
+        }
+         .value-display span {
+             font-weight: bold;
+         }
+
+        button#start-button {
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background-color: var(--secondary-color);
+            color: #ffffff;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2);
+        }
+        button#start-button:hover {
+            background-color: #d082e6; /* Lighter purple */
+        }
+        button#start-button:active {
+             transform: scale(0.98);
+        }
+        button#start-button:disabled {
+            background-color: var(--border-color);
+            color: var(--text-color);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Enhanced Cursor Sound Generator</h1>
+    <p>Move your cursor (or touch) inside the area below. Sound pitch changes left-to-right, volume changes top-to-bottom. Watch the visualization!</p>
+
+    <div id="controls-container">
+        <button id="start-button">Start Audio</button>
+
+        <div id="status-display">
+             <div id="status-message">Audio Inactive</div>
+             <div class="live-value">Freq: <span id="freq-display">-</span> Hz</div>
+             <div class="live-value">Gain: <span id="gain-display">-</span></div>
+        </div>
+
+        <div id="sound-area">
+            <div id="visualizer"></div>
+        </div>
+
+        <div id="controls">
+            <h3>Configuration</h3>
+            <div>
+                <label for="min-freq">Min Frequency:</label>
+                <input type="range" id="min-freq" min="20" max="1000" value="100">
+                <div class="value-display"><span id="min-freq-val">100</span> Hz</div>
+            </div>
+            <div>
+                <label for="max-freq">Max Frequency:</label>
+                <input type="range" id="max-freq" min="200" max="5000" value="1000">
+                 <div class="value-display"><span id="max-freq-val">1000</span> Hz</div>
+            </div>
+            <div>
+                <label for="max-gain">Max Gain:</label>
+                <input type="range" id="max-gain" min="0.05" max="1.0" value="0.5" step="0.01">
+                 <div class="value-display"><span id="max-gain-val">0.5</span></div>
+            </div>
+            <div>
+                <label for="osc-type">Waveform:</label>
+                <select id="osc-type">
+                    <option value="sine" selected>Sine</option>
+                    <option value="square">Square</option>
+                    <option value="sawtooth">Sawtooth</option>
+                    <option value="triangle">Triangle</option>
+                </select>
+                 <div class="value-display"></div> <!-- Placeholder for alignment -->
+            </div>
+             <div>
+                <label for="ramp-time">Smoothness:</label>
+                <input type="range" id="ramp-time" min="0.01" max="0.5" value="0.05" step="0.01">
+                 <div class="value-display"><span id="ramp-time-val">0.05</span> s</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const soundArea = document.getElementById('sound-area');
+        const visualizer = document.getElementById('visualizer'); // <-- New
+        const startButton = document.getElementById('start-button');
+        const statusMessageDiv = document.getElementById('status-message'); // <-- Changed
+        const freqDisplaySpan = document.getElementById('freq-display'); // <-- New
+        const gainDisplaySpan = document.getElementById('gain-display'); // <-- New
+        const minFreqSlider = document.getElementById('min-freq');
+        const maxFreqSlider = document.getElementById('max-freq');
+        const maxGainSlider = document.getElementById('max-gain');
+        const oscTypeSelect = document.getElementById('osc-type');
+        const rampTimeSlider = document.getElementById('ramp-time');
+        const minFreqValSpan = document.getElementById('min-freq-val');
+        const maxFreqValSpan = document.getElementById('max-freq-val');
+        const maxGainValSpan = document.getElementById('max-gain-val');
+        const rampTimeValSpan = document.getElementById('ramp-time-val');
+
+        // --- Web Audio API Variables ---
+        let audioCtx = null;
+        let oscillator = null;
+        let gainNode = null;
+        let isAudioInitialized = false;
+
+        // --- Configuration Variables ---
+        let minFreq = parseFloat(minFreqSlider.value);
+        let maxFreq = parseFloat(maxFreqSlider.value);
+        let maxGain = parseFloat(maxGainSlider.value);
+        let oscillatorType = oscTypeSelect.value;
+        let rampTime = parseFloat(rampTimeSlider.value);
+
+        // --- Visualization constants ---
+        const VISUALIZER_MIN_SCALE = 0.2;
+        const VISUALIZER_MAX_SCALE = 1.8;
+        const HUE_START = 240; // Blue
+        const HUE_END = 0; // Red
+
+
+        // --- Helper Functions ---
+        function updateStatus(message, freq = null, gain = null) {
+            statusMessageDiv.textContent = message;
+            freqDisplaySpan.textContent = freq !== null ? freq.toFixed(0) : '-';
+            gainDisplaySpan.textContent = gain !== null ? gain.toFixed(2) : '-';
+            // console.log("Status:", message, "Freq:", freq, "Gain:", gain); // Keep for debugging if needed
+        }
+
+        function initAudio() {
+            if (!isAudioInitialized) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    isAudioInitialized = true;
+                    startButton.disabled = true;
+                    startButton.textContent = "Audio Context Running";
+                    updateStatus("Context OK. Move into box.");
+                     // Set transition time on visualizer based on ramp time
+                    visualizer.style.transition = `transform ${rampTime}s linear, background-color ${rampTime}s linear, opacity ${rampTime * 2}s linear`;
+                } catch (e) {
+                    console.error("Web Audio API is not supported:", e);
+                    alert("Web Audio API is not supported in this browser.");
+                    updateStatus("Error: Web Audio API not supported.");
+                }
+            }
+             // Resume context if it was suspended (e.g., by browser backgrounding)
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                     updateStatus("Context Resumed. Move into box.");
+                });
+            }
+        }
+
+        function startSound() {
+            if (!isAudioInitialized || !audioCtx || oscillator) return;
+
+             if (audioCtx.state === 'suspended') {
+                 audioCtx.resume(); // Try resuming again if needed
+             }
+             if (audioCtx.state !== 'running') {
+                 updateStatus("Audio context not running. Click 'Start'?");
+                 return;
+             }
+
+            updateStatus("Starting sound...");
+
+            oscillator = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+
+            oscillator.type = oscillatorType;
+            oscillator.frequency.setValueAtTime(minFreq, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime); // Start silent
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            updateStatus("Sound playing...");
+
+            // Make visualizer appear
+            visualizer.style.opacity = '1';
+            visualizer.style.transform = `translate(-50%, -50%) scale(${VISUALIZER_MIN_SCALE})`; // Start at min scale
+        }
+
+        function stopSound() {
+            if (!oscillator || !gainNode || !audioCtx) return;
+
+            updateStatus("Stopping sound...");
+            try {
+                const now = audioCtx.currentTime;
+                gainNode.gain.cancelScheduledValues(now);
+                gainNode.gain.linearRampToValueAtTime(0, now + rampTime * 2); // Fade out gain
+
+                oscillator.stop(now + rampTime * 2 + 0.01);
+
+                // Fade out visualizer
+                visualizer.style.opacity = '0';
+                // Optional: Reset visualizer scale and color during fade out or after stop
+                visualizer.style.transform = `translate(-50%, -50%) scale(${VISUALIZER_MIN_SCALE})`;
+                 visualizer.style.backgroundColor = `hsl(${HUE_START}, 70%, 60%)`;
+
+
+                // Clean up nodes after stop time
+                setTimeout(() => {
+                    if (oscillator) oscillator.disconnect();
+                    if (gainNode) gainNode.disconnect();
+                    oscillator = null;
+                    gainNode = null;
+                }, (rampTime * 2 + 0.05) * 1000); // Delay slightly longer than stop time
+
+                updateStatus("Sound stopped. Move back in.");
+
+            } catch (e) {
+                console.warn("Error stopping sound:", e);
+                 oscillator = null;
+                 gainNode = null;
+                 visualizer.style.opacity = '0'; // Ensure visualizer hides on error too
+                 updateStatus("Sound stopped (with warning).");
+            }
+        }
+
+        function updateSound(event) {
+            if (!oscillator || !gainNode || !audioCtx || audioCtx.state !== 'running') return;
+
+            const rect = soundArea.getBoundingClientRect();
+            const currentX = event.clientX ?? event.changedTouches?.[0]?.clientX;
+            const currentY = event.clientY ?? event.changedTouches?.[0]?.clientY;
+
+            if (currentX === undefined || currentY === undefined) return;
+
+            const x = currentX - rect.left;
+            const y = currentY - rect.top;
+
+            const clampedX = Math.max(0, Math.min(soundArea.offsetWidth, x));
+            const clampedY = Math.max(0, Math.min(soundArea.offsetHeight, y));
+
+            // --- Audio Calculations ---
+            const freqRatio = clampedX / soundArea.offsetWidth; // 0 (left) to 1 (right)
+            const currentFreq = minFreq + freqRatio * (maxFreq - minFreq);
+
+            const gainRatio = 1 - (clampedY / soundArea.offsetHeight); // 1 (top) to 0 (bottom)
+            const currentGain = Math.max(0, gainRatio * maxGain); // Ensure gain isn't negative
+
+            // --- Update Audio ---
+            const now = audioCtx.currentTime;
+            try {
+                 gainNode.gain.cancelScheduledValues(now);
+                 oscillator.frequency.cancelScheduledValues(now);
+
+                 gainNode.gain.linearRampToValueAtTime(currentGain, now + rampTime);
+                 oscillator.frequency.linearRampToValueAtTime(currentFreq, now + rampTime);
+
+                 // --- Update Live Display ---
+                 updateStatus("Playing...", currentFreq, currentGain);
+
+                 // --- Update Visualization ---
+                 // Map frequency ratio (0-1) to hue (HUE_START to HUE_END)
+                 const hue = HUE_START + freqRatio * (HUE_END - HUE_START);
+                 visualizer.style.backgroundColor = `hsl(${hue}, 70%, 60%)`;
+
+                 // Map normalized gain (0-1) to scale (VISUALIZER_MIN_SCALE to VISUALIZER_MAX_SCALE)
+                 const normalizedGain = currentGain / maxGain;
+                 const scale = VISUALIZER_MIN_SCALE + normalizedGain * (VISUALIZER_MAX_SCALE - VISUALIZER_MIN_SCALE);
+                 visualizer.style.transform = `translate(-50%, -50%) scale(${Math.max(VISUALIZER_MIN_SCALE, scale)})`; // Ensure min scale
+
+
+            } catch(e) {
+                console.warn("Error updating sound parameters:", e);
+                stopSound();
+            }
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', initAudio);
+
+        soundArea.addEventListener('mouseenter', startSound);
+        soundArea.addEventListener('mouseleave', stopSound);
+        soundArea.addEventListener('mousemove', updateSound);
+
+        soundArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            initAudio(); // Ensure context ready on first touch
+             // Delay startSound slightly to allow context to resume if needed
+            setTimeout(() => {
+                startSound();
+                updateSound(e);
+            }, 50); // 50ms delay, adjust if needed
+        }, { passive: false });
+
+        soundArea.addEventListener('touchend', (e) => { e.preventDefault(); stopSound(); }, { passive: false });
+        soundArea.addEventListener('touchcancel', (e) => { e.preventDefault(); stopSound(); }, { passive: false });
+        soundArea.addEventListener('touchmove', (e) => { e.preventDefault(); updateSound(e); }, { passive: false });
+
+
+        // --- Control Listeners ---
+        minFreqSlider.addEventListener('input', (e) => {
+            minFreq = parseFloat(e.target.value);
+            minFreqValSpan.textContent = minFreq;
+            if (minFreq >= maxFreq) {
+                maxFreq = minFreq + 100;
+                maxFreqSlider.value = maxFreq;
+                maxFreqValSpan.textContent = maxFreq;
+            }
+            // No immediate audio update here for simplicity, will take effect on next move
+        });
+
+        maxFreqSlider.addEventListener('input', (e) => {
+            maxFreq = parseFloat(e.target.value);
+            maxFreqValSpan.textContent = maxFreq;
+            if (maxFreq <= minFreq) {
+                minFreq = maxFreq - 100;
+                 if (minFreq < parseFloat(minFreqSlider.min)) minFreq = parseFloat(minFreqSlider.min);
+                minFreqSlider.value = minFreq;
+                minFreqValSpan.textContent = minFreq;
+            }
+             // No immediate audio update here
+        });
+
+        maxGainSlider.addEventListener('input', (e) => {
+            maxGain = parseFloat(e.target.value);
+            maxGainValSpan.textContent = maxGain;
+             // If playing, immediately update visualizer scale based on current *audio* gain
+             if (gainNode) {
+                  const currentAudioGain = gainNode.gain.value; // Get the actual current gain
+                  const normalizedGain = currentAudioGain / maxGain; // Re-normalize
+                  const scale = VISUALIZER_MIN_SCALE + normalizedGain * (VISUALIZER_MAX_SCALE - VISUALIZER_MIN_SCALE);
+                  visualizer.style.transform = `translate(-50%, -50%) scale(${Math.max(VISUALIZER_MIN_SCALE, scale)})`;
+             }
+        });
+
+        oscTypeSelect.addEventListener('change', (e) => {
+            oscillatorType = e.target.value;
+            if (oscillator) {
+                oscillator.type = oscillatorType;
+            }
+        });
+
+         rampTimeSlider.addEventListener('input', (e) => {
+            rampTime = parseFloat(e.target.value);
+            rampTimeValSpan.textContent = rampTime;
+             // Update visualizer transition time immediately
+             if(visualizer) {
+                 visualizer.style.transition = `transform ${rampTime}s linear, background-color ${rampTime}s linear, opacity ${rampTime * 2}s linear`;
+             }
+        });
+
+        // --- Initial Setup ---
+        minFreqValSpan.textContent = minFreqSlider.value;
+        maxFreqValSpan.textContent = maxFreqSlider.value;
+        maxGainValSpan.textContent = maxGainSlider.value;
+        rampTimeValSpan.textContent = rampTimeSlider.value;
+        updateStatus("Audio Inactive"); // Initial status message
+
+    </script>
+
+</body>
+</html>
